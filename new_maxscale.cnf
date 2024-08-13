@@ -1,0 +1,179 @@
+#
+#: Configuration created by the MariaDB RDBA Team
+#: Service ticket https://support.mariadb.com/view.php?id=37816
+#: draft 0.1
+
+#: MaxScale Global Configurations
+[maxscale]
+threads=auto
+log_augmentation=1
+ms_timestamp=1
+#admin_host=0.0.0.0
+admin_port=8989
+admin_auth=1
+admin_log_auth_failures=1
+auth_connect_timeout=3s
+#auth_read_timeout=1
+#auth_write_timeout=2
+passive=1
+admin_secure_gui=false
+#admin_ssl_key=/etc/mysql/ssl/client-key.pem
+#admin_ssl_cert=/etc/mysql/ssl/client-cert.pem
+#admin_ssl_ca_cert=/etc/mysql/ssl/ca-cert.pem
+
+#
+#: Servers Definition + SSL configurations
+#: Discussed at https://mariadb.slack.com/archives/GTX2952DV/p1587048144124800
+#
+
+[bdprelab04]
+type=server
+address=192.168.41.184
+port=3306
+protocol=MariaDBBackend
+priority=1
+#ssl=required
+ssl_cert=/etc/mysql/ssl/client-cert.pem
+ssl_key=/etc/mysql/ssl/client-key.pem
+ssl_ca_cert=/etc/mysql/ssl/ca-cert.pem
+
+[bdprelab05]
+type=server
+address=192.168.41.185
+port=3306
+protocol=MariaDBBackend
+priority=2
+#ssl=required
+ssl_cert=/etc/mysql/ssl/client-cert.pem
+ssl_key=/etc/mysql/ssl/client-key.pem
+ssl_ca_cert=/etc/mysql/ssl/ca-cert.pem
+
+[bdprelab06]
+type=server
+address=192.168.41.186
+port=3306
+protocol=MariaDBBackend
+priority=3
+#ssl=required
+ssl_cert=/etc/mysql/ssl/client-cert.pem
+ssl_key=/etc/mysql/ssl/client-key.pem
+ssl_ca=/etc/mysql/ssl/ca-cert.pem
+
+
+#
+#: MaxScale Monitor Definition: GaleraMon
+#
+#[Galera-Monitor-prelab]
+#type=monitor
+#module=galeramon
+#servers=bdprelab01,bdprelab02,bdprelab03
+#available_when_donor=true
+#disable_master_failback=false
+#use_priority=true
+#user=maxmon
+#password=
+
+
+[MariaDB-Monitor-preprod]
+type=monitor
+module=mariadbmon
+servers=bdprelab04,bdprelab05,bdprelab06
+user=maxmon
+password=
+replication_user=replication
+replication_password=
+monitor_interval=1000s
+auto_rejoin=true
+auto_failover=true
+enforce_read_only_slaves=true
+servers_no_promotion=bdprelab06
+
+
+#
+#: MaxScale CCRFilter
+#
+###############################################################################################
+## https://mariadb.com/kb/en/mariadb-maxscale-24-consistent-critical-read-filter/            ##
+###############################################################################################
+## The Consistent Critical Read (CCR) filter allows consistent critical                      ##
+## reads to be done through MaxScale while still allowing scaleout of non-critical reads.    ##
+## This configuration will force all read queries after a write to the master for 5 seconds, ##
+## preventing read scaling until the modifications have been replicated to the slaves.       ##
+## global is a boolean parameter that when enabled causes writes from one connection to      ##
+## propagate to all other connections. This can be used to work around cases where one       ##
+## connection writes data and another reads it, expecting the write done by the other        ##
+## connection to be visible. This parameter only works with the time parameter.              ##
+## Use of global and count at the same time is not allowed and will be treated as an error.  ##
+###############################################################################################
+
+[CCRFilter]
+type=filter
+module=ccrfilter
+time=5s
+global=1
+
+#
+#: MaxScale Service Definition: ReadWriteSplit Router
+#
+#[Galera-Balancer-Service-preprod]
+#type=service
+#router=readwritesplit
+#servers=bdprelab01,bdprelab02,bdprelab03
+#user=maxusr
+#password=
+#enable_root_user=1
+#filters=CCRFilter
+#use_sql_variables_in=master
+
+
+[Galera-Balancer-Service-prelab]
+type=service
+wait_timeout=0s
+router=readconnroute
+router_options=master
+servers=bdprelab04,bdprelab05,bdprelab06
+user=maxusr
+password=
+enable_root_user=1
+
+
+
+
+
+#
+#: MaxScale Service Listener Definition: 3306 + SSL
+#
+[Galera-Listener-prelab]
+type=listener
+#address=192.168.41.144
+service=Galera-Balancer-Service-prelab
+protocol=MariaDBClient
+port=3306
+ssl=false
+ssl_cert=/etc/mysql/ssl/client-cert.pem
+ssl_key=/etc/mysql/ssl/client-key.pem
+ssl_ca=/etc/mysql/ssl/ca-cert.pem
+
+[MaxAdmin-Service]
+type=service
+router=readwritesplit
+#router_options=master
+enable_root_user=1
+user=maxusr
+password=
+
+
+[MaxAdmin-Listener_UNIX]
+type=listener
+service=MaxAdmin-Service
+protocol=mariadb
+socket=/var/run/maxscale/maxadmin.sock
+
+[MaxAdmin-Listener_Network]
+type=listener
+service=MaxAdmin-Service
+protocol=mariadb
+#address=192.168.40.173
+port=6603
+
+
